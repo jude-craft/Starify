@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/feedback_item.dart';
-import '../services/datastore/mock_datastore.dart';
 
 class RatingDialog extends StatefulWidget {
   final VoidCallback onSubmit;
@@ -15,8 +16,12 @@ class RatingDialog extends StatefulWidget {
 }
 
 class _RatingDialogState extends State<RatingDialog> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  
   int _currentRating = 0;
   final TextEditingController _feedbackController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -34,7 +39,7 @@ class _RatingDialogState extends State<RatingDialog> {
     }
   }
 
-  void _submitFeedback() {
+  Future<void> _submitFeedback() async {
     if (_currentRating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -45,36 +50,69 @@ class _RatingDialogState extends State<RatingDialog> {
       return;
     }
 
-    // Save to mock data store (will be replaced with Firebase in later steps)
-    final feedback = FeedbackItem(
-      userName: MockDataStore.currentUser?.name ?? 'Anonymous',
-      rating: _currentRating,
-      feedback: _feedbackController.text.isEmpty 
-          ? 'No additional feedback provided' 
-          : _feedbackController.text,
-      timestamp: DateTime.now(),
-    );
-    
-    MockDataStore.addFeedback(feedback);
+    setState(() {
+      _isSubmitting = true;
+    });
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 12),
-            Text('Thank you for your feedback!'),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
 
-    // Close dialog and notify parent
-    Navigator.pop(context);
-    widget.onSubmit();
+      // Create feedback document in Firestore
+      final feedback = FeedbackItem(
+        id: '',
+        userId: user.uid,
+        userName: user.displayName ?? 'Anonymous',
+        userEmail: user.email ?? '',
+        rating: _currentRating,
+        feedback: _feedbackController.text.isEmpty 
+            ? 'No additional feedback provided' 
+            : _feedbackController.text,
+        timestamp: DateTime.now(),
+      );
+
+      // Add to Firestore
+      await _firestore.collection('feedbacks').add(feedback.toMap());
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Thank you for your feedback!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Close dialog and notify parent
+        Navigator.pop(context);
+        widget.onSubmit();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error submitting feedback: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -127,7 +165,7 @@ class _RatingDialogState extends State<RatingDialog> {
               children: List.generate(5, (index) {
                 final starValue = index + 1;
                 return GestureDetector(
-                  onTap: () {
+                  onTap: _isSubmitting ? null : () {
                     setState(() {
                       _currentRating = starValue;
                     });
@@ -164,6 +202,7 @@ class _RatingDialogState extends State<RatingDialog> {
               TextField(
                 controller: _feedbackController,
                 maxLines: 4,
+                enabled: !_isSubmitting,
                 decoration: InputDecoration(
                   hintText: 'Share your thoughts... (optional)',
                   border: OutlineInputBorder(
@@ -180,7 +219,7 @@ class _RatingDialogState extends State<RatingDialog> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _isSubmitting ? null : () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -199,20 +238,29 @@ class _RatingDialogState extends State<RatingDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _submitFeedback,
+                    onPressed: _isSubmitting ? null : _submitFeedback,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Submit',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Submit',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ],

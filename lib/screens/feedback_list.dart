@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/feedback_item.dart';
-import '../services/datastore/mock_datastore.dart';
 
 class FeedbackListScreen extends StatelessWidget {
   const FeedbackListScreen({super.key});
@@ -25,29 +25,55 @@ class FeedbackListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final feedbacks = MockDataStore.feedbacks;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('All Feedbacks'),
-        actions: [
-          if (feedbacks.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Center(
-                child: Text(
-                  '${feedbacks.length} reviews',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
-      body: feedbacks.isEmpty
-          ? Center(
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('feedbacks')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          // Loading state
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // Error state
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 80,
+                    color: Colors.red[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading feedbacks',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.red[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    snapshot.error.toString(),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Empty state
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -72,15 +98,58 @@ class FeedbackListScreen extends StatelessWidget {
                   ),
                 ],
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: feedbacks.length,
-              itemBuilder: (context, index) {
-                final feedback = feedbacks[index];
-                return _buildFeedbackCard(context, feedback);
-              },
-            ),
+            );
+          }
+
+          // Convert documents to FeedbackItem objects
+          final feedbacks = snapshot.data!.docs.map((doc) {
+            return FeedbackItem.fromMap(
+              doc.id,
+              doc.data() as Map<String, dynamic>,
+            );
+          }).toList();
+
+          // Display feedbacks list
+          return Column(
+            children: [
+              // Stats header
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.reviews_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${feedbacks.length} Total Reviews',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Feedbacks list
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: feedbacks.length,
+                  itemBuilder: (context, index) {
+                    final feedback = feedbacks[index];
+                    return _buildFeedbackCard(context, feedback);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
