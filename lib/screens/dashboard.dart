@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:Starify/models/rate_app.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,25 +17,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final AppRating appRating = AppRating();
   
   Timer? _autoRatingTimer;
   User? _currentUser;
   double _averageRating = 0.0;
   int _totalReviews = 0;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+
+    appRating.rateApp(context);
+
     _currentUser = _auth.currentUser;
     _loadStats();
     
-    // Auto-trigger rating popup after 5 seconds
-    _autoRatingTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        _showRatingDialog();
-      }
-    });
+    // // Auto-trigger rating popup after 5 seconds
+    // _autoRatingTimer = Timer(const Duration(seconds: 5), () {
+    //   if (mounted) {
+    //     _showRatingDialog();
+    //   }
+    // });
   }
 
   @override
@@ -60,17 +65,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           _totalReviews = snapshot.docs.length;
           _averageRating = totalRating / _totalReviews;
-          _isLoading = false;
         });
       } else {
         setState(() {
-          _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -127,9 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      body:SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(

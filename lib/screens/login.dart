@@ -10,6 +10,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: [
@@ -24,7 +25,10 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     // Check if user is already signed in
     _checkCurrentUser();
+
   }
+
+ 
 
   void _checkCurrentUser() async {
     try {
